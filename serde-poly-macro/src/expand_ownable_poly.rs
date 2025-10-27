@@ -1,8 +1,8 @@
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{
-    spanned::Spanned, Data, DeriveInput, Fields, GenericArgument, GenericParam, Lifetime,
-    PathArguments, Type,
+    spanned::Spanned, Data, DeriveInput, Fields, GenericArgument, GenericParam, Ident, Lifetime,
+    PathArguments, Type, Variant,
 };
 
 pub fn expand_ownable_poly(input: DeriveInput) -> syn::Result<TokenStream2> {
@@ -12,23 +12,6 @@ pub fn expand_ownable_poly(input: DeriveInput) -> syn::Result<TokenStream2> {
         data,
         ..
     } = input;
-
-    // Only support structs
-    let fields = match data {
-        Data::Struct(data_struct) => data_struct.fields,
-        Data::Enum(data_enum) => {
-            return Err(syn::Error::new(
-                data_enum.enum_token.span(),
-                "OwnablePoly derive does not support enums",
-            ));
-        }
-        Data::Union(data_union) => {
-            return Err(syn::Error::new(
-                data_union.union_token.span(),
-                "OwnablePoly derive does not support unions",
-            ));
-        }
-    };
 
     // Extract lifetime parameters
     let lifetime_params: Vec<_> = generics
@@ -65,16 +48,114 @@ pub fn expand_ownable_poly(input: DeriveInput) -> syn::Result<TokenStream2> {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let (_, owned_ty_generics, _) = owned_generics.split_for_impl();
 
-    // Generate field transformations
-    let field_transformations = generate_field_transformations(&fields, &lifetime_params)?;
+    // Generate transformation body based on data type
+    let transformation_body = match data {
+        Data::Struct(data_struct) => {
+            let field_transformations = generate_field_transformations(&data_struct.fields, &lifetime_params)?;
+            quote! {
+                #ident #field_transformations
+            }
+        }
+        Data::Enum(data_enum) => {
+            generate_enum_transformation(&ident, &data_enum.variants, &lifetime_params)?
+        }
+        Data::Union(data_union) => {
+            return Err(syn::Error::new(
+                data_union.union_token.span(),
+                "OwnablePoly derive does not support unions",
+            ));
+        }
+    };
 
     Ok(quote! {
         impl #impl_generics ::serde_poly::OwnablePoly for #ident #ty_generics #where_clause {
             type Owned = #ident #owned_ty_generics;
 
-            fn into_owned(self) -> Self::Owned {
-                #ident #field_transformations
+            fn into_owned(self) -> <Self as ::serde_poly::OwnablePoly>::Owned {
+                #transformation_body
             }
+        }
+    })
+}
+
+fn generate_enum_transformation(
+    enum_ident: &Ident,
+    variants: &syn::punctuated::Punctuated<Variant, syn::token::Comma>,
+    lifetime_params: &[Lifetime],
+) -> syn::Result<TokenStream2> {
+    let match_arms = variants.iter().map(|variant| {
+        let variant_ident = &variant.ident;
+
+        match &variant.fields {
+            Fields::Named(fields_named) => {
+                // Generate patterns and transformations for named fields
+                let field_names: Vec<_> = fields_named.named.iter()
+                    .map(|f| f.ident.as_ref().unwrap())
+                    .collect();
+
+                let field_inits = fields_named.named.iter().map(|field| {
+                    let field_name = field.ident.as_ref().unwrap();
+                    let has_lifetime = type_contains_any_lifetime(&field.ty, lifetime_params);
+
+                    if has_lifetime {
+                        quote! {
+                            #field_name: ::serde_poly::OwnablePoly::into_owned(#field_name)
+                        }
+                    } else {
+                        quote! {
+                            #field_name
+                        }
+                    }
+                });
+
+                quote! {
+                    #enum_ident::#variant_ident { #(#field_names),* } => {
+                        #enum_ident::#variant_ident {
+                            #(#field_inits),*
+                        }
+                    }
+                }
+            }
+            Fields::Unnamed(fields_unnamed) => {
+                // Generate patterns and transformations for unnamed fields
+                let field_names: Vec<_> = (0..fields_unnamed.unnamed.len())
+                    .map(|i| quote::format_ident!("field_{}", i))
+                    .collect();
+
+                let field_inits = fields_unnamed.unnamed.iter().enumerate().map(|(i, field)| {
+                    let field_name = &field_names[i];
+                    let has_lifetime = type_contains_any_lifetime(&field.ty, lifetime_params);
+
+                    if has_lifetime {
+                        quote! {
+                            ::serde_poly::OwnablePoly::into_owned(#field_name)
+                        }
+                    } else {
+                        quote! {
+                            #field_name
+                        }
+                    }
+                });
+
+                quote! {
+                    #enum_ident::#variant_ident(#(#field_names),*) => {
+                        #enum_ident::#variant_ident(
+                            #(#field_inits),*
+                        )
+                    }
+                }
+            }
+            Fields::Unit => {
+                quote! {
+                    #enum_ident::#variant_ident => #enum_ident::#variant_ident
+                }
+            }
+        }
+    });
+
+    Ok(quote! {
+        match self {
+            #(#match_arms),*
         }
     })
 }
