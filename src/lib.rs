@@ -35,22 +35,7 @@ impl<T> SerdePoly for T where T: DeserializePoly + SerializePoly {}
 /// Mostly useful as a helper method for coercing types with lifetimes into their `'static`
 /// variants, it _is not_ intended to otherwise change the type.
 pub trait OwnablePoly {
-    type Owned: OwnablePoly;
+    type Owned: OwnablePoly + 'static;
 
     fn into_owned(self) -> Self::Owned;
-}
-
-struct Example<'a> {
-    data: std::borrow::Cow<'a, str>,
-}
-
-/// `#[derive(OwnablePoly)]` on `Example` should generate code similar to this.
-impl<'a> OwnablePoly for Example<'a> {
-    type Owned = Example<'static>;
-
-    fn into_owned(self) -> Self::Owned {
-        Example {
-            data: std::borrow::Cow::Owned(self.data.into_owned()),
-        }
-    }
 }

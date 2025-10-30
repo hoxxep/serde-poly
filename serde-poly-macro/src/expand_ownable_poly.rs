@@ -45,7 +45,28 @@ pub fn expand_ownable_poly(input: DeriveInput) -> syn::Result<TokenStream2> {
         }
     }
 
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    // Create impl generics with 'static bounds for type parameters
+    let mut impl_generics_with_static = generics.clone();
+
+    // Collect type parameter idents
+    let type_params: Vec<_> = generics
+        .params
+        .iter()
+        .filter_map(|param| match param {
+            GenericParam::Type(ty) => Some(ty.ident.clone()),
+            _ => None,
+        })
+        .collect();
+
+    // Add 'static bounds to where clause for all type parameters
+    if !type_params.is_empty() {
+        let where_clause = impl_generics_with_static.make_where_clause();
+        for type_param in type_params {
+            where_clause.predicates.push(syn::parse_quote!(#type_param: 'static));
+        }
+    }
+
+    let (impl_generics, ty_generics, where_clause) = impl_generics_with_static.split_for_impl();
     let (_, owned_ty_generics, _) = owned_generics.split_for_impl();
 
     // Generate transformation body based on data type
