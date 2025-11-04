@@ -17,6 +17,7 @@ macro_rules! impl_ownable_poly_primitive {
 impl_ownable_poly_primitive!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64);
 impl_ownable_poly_primitive!(char, String);
 impl_ownable_poly_primitive!(bool);
+impl_ownable_poly_primitive!(());
 
 impl<T: OwnablePoly> OwnablePoly for Vec<T> {
     type Owned = Vec<T::Owned>;

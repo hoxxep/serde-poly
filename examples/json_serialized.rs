@@ -10,6 +10,7 @@
 
 use std::borrow::Cow;
 use std::marker::PhantomData;
+use std::ops::Deref;
 use serde::{Deserialize, Serialize};
 use serde_poly::{DeserializePoly, DeserializePolyOwned, OwnablePoly, SerializePoly};
 use serde_poly_macro::Poly;
@@ -23,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let json: Json<'static, MyTypePoly> = Json::serialize(&data)?;
-    let json_str = json.as_ref();
+    let json_str: &str = &json;  // deref to the underlying &str
     println!("Serialized JSON: {}", json_str);
 
     // send the string over the wire, store in DB, etc.
@@ -36,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(data, deserialized_data_owned);
 
     let deserialized_json_owned: Json<'static, MyTypePoly> = deserialized_json.into_owned();
-    assert_eq!(json.as_ref(), deserialized_json_owned.as_ref());
+    assert_eq!(json_str, deserialized_json_owned.deref());
 
     Ok(())
 }
@@ -98,8 +99,10 @@ impl<'a, T> From<String> for Json<'a, T> {
     }
 }
 
-impl<T> AsRef<str> for Json<'_, T> {
-    fn as_ref(&self) -> &str {
+impl<T> Deref for Json<'_, T> {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
         &self.0
     }
 }

@@ -58,6 +58,7 @@ macro_rules! impl_poly_borrowed {
     };
 }
 
+impl_poly_owned!(());
 impl_poly_owned!(String);
 impl_poly_owned!(bool);
 impl_poly_owned!(char);

@@ -17,6 +17,8 @@ Consider a type like `EncryptedItem<'a, MyData<'a>>` where `MyData<'a>` uses zer
 
 EncryptedItem can now hold generic types `T: DeserializePoly + SerializePoly`, avoiding many lifetime issues in zerocopy contexts as inner types are slowly deserialized.
 
+See `examples/json_serialization.rs` for a complete example that enables using `Json<T>` throughout your codebase or API interface to represent JSON-serialized data with strong typing, with owned and zerocopy deserialization support.
+
 ## Usage
 
 ### Owned types (types without lifetimes)
